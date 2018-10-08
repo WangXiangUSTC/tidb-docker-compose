@@ -36,7 +36,7 @@ level = "error"
 
 # file logging
 [log.file]
-#filename = ""
+filename = "/tmp/pd.log"
 # max log file size in MB
 #max-size = 300
 # max log file keep days

@@ -66,7 +66,7 @@ query-log-max-len = 2048
 # File logging.
 [log.file]
 # Log file name.
-filename = ""
+filename = "/tmp/tidb.log"
 
 # Max log file size in MB (upper limit to 4096MB).
 max-size = 300
@@ -219,9 +219,9 @@ grpc-connection-count = 16
 commit-timeout = "41s"
 
 [binlog]
-
+enable = true
 # Socket file to write binlog.
-binlog-socket = ""
+#binlog-socket = ""
 
 # WriteTimeout specifies how long it will wait for writing binlog to pump.
 write-timeout = "15s"
