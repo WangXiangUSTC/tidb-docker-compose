@@ -2,12 +2,14 @@ version: '2.1'
 
 services:
   pd0:
+    container_name: pd0
     image: pingcap/pd:latest
     ports:
-      - "2379"
+        - "2379:2379"
     volumes:
       - ./config/pd.toml:/pd.toml:ro
       - ./data:/data
+      - /tmp:/tmp
     command:
       - --name=pd0
       - --client-urls=http://0.0.0.0:2379
@@ -19,41 +21,46 @@ services:
       - --config=/pd.toml
     restart: on-failure
   pd1:
+    container_name: pd1
     image: pingcap/pd:latest
     ports:
-      - "2379"
+        - "2389:2389"
     volumes:
       - ./config/pd.toml:/pd.toml:ro
       - ./data:/data
     command:
       - --name=pd1
-      - --client-urls=http://0.0.0.0:2379
+      - --client-urls=http://0.0.0.0:2389
       - --peer-urls=http://0.0.0.0:2380
-      - --advertise-client-urls=http://pd1:2379
+      - --advertise-client-urls=http://pd1:2389
       - --advertise-peer-urls=http://pd1:2380
       - --initial-cluster=pd0=http://pd0:2380,pd1=http://pd1:2380,pd2=http://pd2:2380
       - --data-dir=/data/pd1
       - --config=/pd.toml
     restart: on-failure
   pd2:
+    container_name: pd2
     image: pingcap/pd:latest
     ports:
-      - "2379"
+        - "2399:2399"
     volumes:
       - ./config/pd.toml:/pd.toml:ro
       - ./data:/data
     command:
       - --name=pd2
-      - --client-urls=http://0.0.0.0:2379
+      - --client-urls=http://0.0.0.0:2399
       - --peer-urls=http://0.0.0.0:2380
-      - --advertise-client-urls=http://pd2:2379
+      - --advertise-client-urls=http://pd2:2399
       - --advertise-peer-urls=http://pd2:2380
       - --initial-cluster=pd0=http://pd0:2380,pd1=http://pd1:2380,pd2=http://pd2:2380
       - --data-dir=/data/pd2
       - --config=/pd.toml
     restart: on-failure
   tikv0:
+    container_name: tikv0
     image: pingcap/tikv:latest
+    ports:
+        - "20160:20160"
     volumes:
       - ./config/tikv.toml:/tikv.toml:ro
       - ./data:/data
@@ -61,7 +68,7 @@ services:
       - --addr=0.0.0.0:20160
       - --advertise-addr=tikv0:20160
       - --data-dir=/data/tikv0
-      - --pd=pd0:2379,pd1:2379,pd2:2379
+      - --pd=pd0:2379,pd1:2389,pd2:2399
       - --config=/tikv.toml
     depends_on:
       - "pd0"
@@ -69,15 +76,18 @@ services:
       - "pd2"
     restart: on-failure
   tikv1:
+    container_name: tikv1
     image: pingcap/tikv:latest
+    ports:
+        - "20170:20170"
     volumes:
       - ./config/tikv.toml:/tikv.toml:ro
       - ./data:/data
     command:
-      - --addr=0.0.0.0:20160
-      - --advertise-addr=tikv1:20160
+      - --addr=0.0.0.0:20170
+      - --advertise-addr=tikv1:20170
       - --data-dir=/data/tikv1
-      - --pd=pd0:2379,pd1:2379,pd2:2379
+      - --pd=pd0:2379,pd1:2389,pd2:2399
       - --config=/tikv.toml
     depends_on:
       - "pd0"
@@ -85,15 +95,18 @@ services:
       - "pd2"
     restart: on-failure
   tikv2:
+    container_name: tikv2
     image: pingcap/tikv:latest
+    ports:
+        - "20180:20180"
     volumes:
       - ./config/tikv.toml:/tikv.toml:ro
       - ./data:/data
     command:
-      - --addr=0.0.0.0:20160
-      - --advertise-addr=tikv2:20160
+      - --addr=0.0.0.0:20180
+      - --advertise-addr=tikv2:20180
       - --data-dir=/data/tikv2
-      - --pd=pd0:2379,pd1:2379,pd2:2379
+      - --pd=pd0:2379,pd1:2389,pd2:2399
       - --config=/tikv.toml
     depends_on:
       - "pd0"
@@ -102,54 +115,34 @@ services:
     restart: on-failure
 
   tidb:
-    image: pingcap/tidb:latest
+    container_name: tidb0
+    #build: tidb
+    # image: pingcap/tidb:latest
+    image: pingcap/tidb:pumps-client
     ports:
       - "4000:4000"
       - "10080:10080"
     volumes:
       - ./config/tidb.toml:/tidb.toml:ro
+      - /tmp:/tmp
     command:
       - --store=tikv
-      - --path=pd0:2379,pd1:2379,pd2:2379
+      # - --path=http://pd0:2379,http://pd1:2389,http://pd2:2399
+      - --path=${HOST_IP}:2379
       - --config=/tidb.toml
+      # - --binlog-socket=/tmp/pump.sock
+      #- --enable-binlog=true
+
     depends_on:
       - "tikv0"
       - "tikv1"
       - "tikv2"
-    restart: on-failure
-  tispark-master:
-    image: pingcap/tispark:latest
-    command:
-      - /opt/spark/sbin/start-master.sh
-    volumes:
-      - ./config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
-    environment:
-      SPARK_MASTER_PORT: 7077
-      SPARK_MASTER_WEBUI_PORT: 8080
-    ports:
-      - "7077:7077"
-      - "8080:8080"
-    depends_on:
-      - "tikv0"
-      - "tikv1"
-      - "tikv2"
-    restart: on-failure
-  tispark-slave0:
-    image: pingcap/tispark:latest
-    command:
-      - /opt/spark/sbin/start-slave.sh
-      - spark://tispark-master:7077
-    volumes:
-      - ./config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
-    environment:
-      SPARK_WORKER_WEBUI_PORT: 38081
-    ports:
-      - "38081:38081"
-    depends_on:
-      - tispark-master
+      - "pump"
+      - "pump2"
     restart: on-failure
 
   tidb-vision:
+    container_name: tidb-version0
     image: pingcap/tidb-vision:latest
     environment:
       PD_ENDPOINT: pd0:2379
@@ -158,35 +151,35 @@ services:
 
   # monitors
   pushgateway:
+    container_name: pushgateway0
     image: prom/pushgateway:v0.3.1
-    command:
-    - --log.level=error
     restart: on-failure
+    ports:
+      - "9091:9091"
   prometheus:
+    container_name: prometheus0
     user: root
-    image: prom/prometheus:v2.2.1
+    image: prom/prometheus:v2.0.0
     command:
-      - --log.level=error
       - --storage.tsdb.path=/data/prometheus
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./config/pd.rules.yml:/etc/prometheus/pd.rules.yml:ro
-      - ./config/tikv.rules.yml:/etc/prometheus/tikv.rules.yml:ro
-      - ./config/tidb.rules.yml:/etc/prometheus/tidb.rules.yml:ro
+      - ./config/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - ./config/binlog.rules.yml:/etc/prometheus/binlog.rules.yml:ro
       - ./data:/data
     restart: on-failure
   grafana:
+    container_name: grafana0
     image: grafana/grafana:4.6.3
-    environment:
-      GF_LOG_LEVEL: error
     ports:
       - "3000:3000"
     restart: on-failure
   dashboard-installer:
-    image: pingcap/tidb-dashboard-installer:v2.0.0
+    container_name: dashboard-installer0
+    image: pingcap/tidb-dashboard-installer:v1.0.0
     command: ["grafana:3000"]
     volumes:
       - ./config/grafana-datasource.json:/datasource.json:ro
@@ -195,3 +188,82 @@ services:
       - ./config/tidb-dashboard.json:/tidb.json:ro
       - ./config/overview-dashboard.json:/overview.json:ro
     restart: on-failure
+
+  pump:
+    container_name: pump0
+    environment:
+      GRPC_GO_LOG_VERBOSITY_LEVEL: 10
+    #build: pump
+    image: pingcap/pump:latest
+    ports:
+      - "8250:8250"
+      - "10000:10000"
+    volumes:
+      # - ./config/pump.toml:/pump.toml:ro
+      - /tmp:/tmp
+      - ./data:/data
+    command:
+      - --addr=0.0.0.0:8250
+      - --advertise-addr=pump:8250
+      - --pd-urls=http://pd0:2379
+      # - --kafka-addrs=${HOST_IP}:9092
+      - --gc=1
+      - --log-file=/tmp/pump.log
+      - --L=debug
+      - --data-dir=/data/data.pump
+      - --node-id=1.1.1.1:8250
+      - --metrics-addr=pushgateway:9091
+    depends_on:
+      - "pd0"
+      - "pd1"
+      - "pd2"
+    restart: on-failure
+
+  pump2:
+    container_name: pump1
+    #build: pump
+    image: pingcap/pump:latest
+    ports:
+      - "8252:8252"
+    volumes:
+      # - ./config/pump.toml:/pump.toml:ro
+      - /tmp:/tmp
+      - ./data:/data
+    command:
+      - --addr=0.0.0.0:8252
+      - --advertise-addr=pump2:8252
+      - --pd-urls=http://pd0:2379
+      # - --kafka-addrs=${HOST_IP}:9092
+      - --gc=1
+      - --log-file=/tmp/pump2.log
+      - --L=debug
+      - --data-dir=/data/data.pump2
+      - --node-id=1.1.1.2:8252
+      - --metrics-addr=pushgateway:9091
+    depends_on:
+      - "pd0"
+      - "pd1"
+      - "pd2"
+    restart: on-failure
+  drainer:
+    container_name: drainer0
+    image: pingcap/drainer:latest
+    ports:
+      - "8249:8249"
+    volumes:
+      # - ./config/pump.toml:/pump.toml:ro
+      - /tmp:/tmp
+      - ./data:/data
+    command:
+      - --addr=drainer:8249
+      - --pd-urls=http://pd0:2379
+      - --log-file=/tmp/drainer.log
+      - --L=debug
+      - --data-dir=/data/data.drainer
+      - --metrics-addr=pushgateway:9091
+      - --dest-db-type=pb
+    depends_on:
+      - "pump"
+      - "pump2"
+    restart: on-failure
+    
